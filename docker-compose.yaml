@@ -16,9 +16,6 @@ services:
     build:
       context: .
     command:
-      # - tail
-      # - -f
-      # - /dev/null
       - python
       - influxdb_import.py
       - --user=${INFLUXDB_ADMIN_USER}
