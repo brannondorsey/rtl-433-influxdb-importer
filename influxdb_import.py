@@ -1,20 +1,40 @@
 # -*- coding: utf-8 -*-
+import os
 import json
-import time
 import subprocess
 import select
+import argparse
 from influxdb import InfluxDBClient
 from influxdb import SeriesHelper
 
-# InfluxDB connections settings
-host = 'localhost'
-port = 8086
-user = ''
-password = ''
-dbname = 'rtl-433-weather-station'
-station_name = '1001-s-49th-st-philadelphia'
-rtl_433_packets_file = 'packets.json'
-dbclient = InfluxDBClient(host, port, user, password, dbname)
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description='Import Acurite 5-in-1 weather data into influxdb from an rtl_433 JSON file')
+    parser.add_argument('--host', type=str, required=False,
+                        default='localhost',
+                        help='hostname of InfluxDB http API')
+    parser.add_argument('--port', type=int, required=False, default=8086,
+                        help='port of InfluxDB http API')
+    parser.add_argument('--user', type=str, required=False,
+                        default='root',
+                        help='InfluxDB username')
+    parser.add_argument('--password', type=str, required=True,
+                        help='InfluxDB password')
+    parser.add_argument('--database', type=str, required=False,
+                        default='rtl_433_weather_station',
+                        help='Database name. If a database already by this name exists it will be deleted and replaced.')
+    parser.add_argument('--station', type=str, required=True,
+                        help='The name of the rtl_433 listening station to associate these weather samples with. Usually a location or address. This is a user defined value and can be set to any string.')
+    parser.add_argument('--input', type=str, required=True,
+                        help='A path to the file containing rtl_433 JSON output to be imported to influxdb')
+    return parser.parse_args()
+
+args = parse_args()
+dbclient = InfluxDBClient(args.host, args.port, args.user, args.password, args.database)
+
+if not os.path.exists(args.input):
+  print('Error: --input file does not exist.')
+  exit(1)
 
 class WeatherStationSeriesHelper(SeriesHelper):
   class Meta:
@@ -44,21 +64,21 @@ def process_line(line, commit_each_line=False):
   try: packet = json.loads(line)
   except: return
   if 'model' in packet and packet['model'] == 'Acurite 5n1 sensor':
-    WeatherStationSeriesHelper(station_name=station_name, **mutate_fields(packet))
+    WeatherStationSeriesHelper(station_name=args.station, **mutate_fields(packet))
     if commit_each_line: WeatherStationSeriesHelper.commit()
     line_count += 1
     if line_count % 1000 == 0 and line_count != 0:
       print('Imported {} lines...'.format(line_count))
 
-if db_exists(dbclient, dbname):
-  dbclient.drop_database(dbname)
+if db_exists(dbclient, args.database):
+  dbclient.drop_database(args.database)
 
-dbclient.create_database(dbname)
+dbclient.create_database(args.database)
 
-if not retention_policy_exists(dbclient, 'infinity', dbname):
+if not retention_policy_exists(dbclient, 'infinity', args.database):
   dbclient.create_retention_policy('infinity', 'INF', 1, default=True)
 
-with open(rtl_433_packets_file, 'r') as f:
+with open(args.input, 'r') as f:
   for line in f:
     process_line(line)
 # Commit any pending transactions
@@ -66,7 +86,7 @@ WeatherStationSeriesHelper.commit()
 
 print('Batch import complete, tailing file...')
 
-tail = subprocess.Popen([ 'tail', '-n', '1', '-F', rtl_433_packets_file ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+tail = subprocess.Popen([ 'tail', '-n', '1', '-F', args.input ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 poll = select.poll()
 poll.register(tail.stdout)
 while True:
