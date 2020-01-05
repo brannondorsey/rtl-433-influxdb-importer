@@ -11,7 +11,7 @@ nano .env
 docker-compose up -d
 ```
 
-Alternatively, you can run influxdb and the rtl-433-importer agent on different machines. Just make sure the `INFLUXDB_HOST` env var in `.env` points to the correct influxdb host.
+Alternatively, you can run influxdb and the rtl-433-importer agent on different machines. Just make sure the `INFLUXDB_HOST` env var in `.env` points to the correct influxdb host. In this case, uncomment the `network_mode: host` line in the `rtl-433-importer` service in `docker-compose.yaml`.
 
 ```bash
 [host1] $ docker-compose up -d influxdb

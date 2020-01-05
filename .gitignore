@@ -1,4 +1,5 @@
 venv/
 .DS_Store
 .env
+.vscode
 packets.json

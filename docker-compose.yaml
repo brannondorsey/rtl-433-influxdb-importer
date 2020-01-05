@@ -26,8 +26,8 @@ services:
     restart: unless-stopped
     volumes:
       - "${INPUT_FILE}:/root/packets.json"
-    links:
-      - influxdb
+## Uncomment if influxdb and rtl-433-importer live on different hosts
+#    network_mode: host # useful if influxdb is running on another host
 volumes:
   influxdb-data:
     driver: local
