@@ -27,14 +27,14 @@ def parse_args():
                         help='The name of the rtl_433 listening station to associate these weather samples with. Usually a location or address. This is a user defined value and can be set to any string.')
     parser.add_argument('--input', type=str, required=True,
                         help='A path to the file containing rtl_433 JSON output to be imported to influxdb')
+    parser.add_argument('--create-and-overwrite-db', action='store_true', required=False,
+                        help='Create the database, overwriting a database by the same name if it already exists')
+    parser.add_argument('--backfill', action='store_true', required=False,
+                        help='Backfill the database with the entire contents of the --input file. Usually used when initializing a database from a collection of historical weather data with --create-and-overwrite-db.')
     return parser.parse_args()
 
 args = parse_args()
 dbclient = InfluxDBClient(args.host, args.port, args.user, args.password, args.database)
-
-if not os.path.exists(args.input):
-  print('Error: --input file does not exist.')
-  exit(1)
 
 class WeatherStationSeriesHelper(SeriesHelper):
   class Meta:
@@ -70,22 +70,29 @@ def process_line(line, commit_each_line=False):
     if line_count % 1000 == 0 and line_count != 0:
       print('Imported {} lines...'.format(line_count))
 
-if db_exists(dbclient, args.database):
-  dbclient.drop_database(args.database)
+if not os.path.exists(args.input):
+  print('Error: --input file does not exist.')
+  exit(1)
 
-dbclient.create_database(args.database)
+if args.create_and_overwrite_db:
+  if db_exists(dbclient, args.database):
+    print('Droping existing database "{}"'.format(args.database))
+    dbclient.drop_database(args.database)
+  print('Creating new database "{}"'.format(args.database))
+  dbclient.create_database(args.database)
+  print('Creating retention policy')
+  if not retention_policy_exists(dbclient, 'infinity', args.database):
+    dbclient.create_retention_policy('infinity', 'INF', 1, default=True)
 
-if not retention_policy_exists(dbclient, 'infinity', args.database):
-  dbclient.create_retention_policy('infinity', 'INF', 1, default=True)
+if args.backfill:
+  print('Backfilling "{}" via batch imports'.format(args.input))
+  with open(args.input, 'r') as f:
+    for line in f:
+      process_line(line)
+  # Commit any pending transactions
+  WeatherStationSeriesHelper.commit()
 
-with open(args.input, 'r') as f:
-  for line in f:
-    process_line(line)
-# Commit any pending transactions
-WeatherStationSeriesHelper.commit()
-
-print('Batch import complete, tailing file...')
-
+print('Tailing file "{}"...'.format(args.input))
 tail = subprocess.Popen([ 'tail', '-n', '1', '-F', args.input ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 poll = select.poll()
 poll.register(tail.stdout)

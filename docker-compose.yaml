@@ -15,6 +15,8 @@ services:
     image: brannondorsey/rtl-433-influxdb-importer
     build:
       context: .
+    environment:
+      PYTHONUNBUFFERED: "1"
     command:
       - python
       - influxdb_import.py
@@ -23,6 +25,10 @@ services:
       - --host=${INFLUXDB_HOST}
       - --station=${STATION_NAME}
       - --input=/root/packets.json
+      ## Uncomment these bottom two lines to initialize the database and fill it with
+      ## existing weather data from ${INPUT_FILE}
+      # - --create-and-overwrite-db
+      # - --backfill
     restart: unless-stopped
     volumes:
       - "${INPUT_FILE}:/root/packets.json"
